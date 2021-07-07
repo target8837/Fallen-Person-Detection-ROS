@@ -6,6 +6,7 @@ import cv2
 import rospy
 import argparse
 import message_filters
+import numpy as np
 from cv_bridge import CvBridge, CvBridgeError
 from ros_openpose.msg import Frame, Person, BodyPart, Pixel
 from sensor_msgs.msg import Image, CameraInfo
@@ -16,12 +17,15 @@ rospy.init_node('ros_openpose')
 py_openpose_path = rospy.get_param("~py_openpose_path")
 try:
     # If you run `make install` (default path is `/usr/local/python` for Ubuntu)
-    sys.path.append(py_openpose_path)
+    sys.path.append("/home/kwan/openpose/build/python")
     from openpose import pyopenpose as op
 except ImportError as e:
     rospy.logerr('OpenPose library could not be found. '
                  'Did you enable `BUILD_PYTHON` in CMake and have this Python script in the right folder?')
     raise e
+
+
+OPENPOSE1POINT7_OR_HIGHER = 'VectorDatum' in op.__dict__
 
 
 class rosOpenPose:
@@ -42,13 +46,28 @@ class rosOpenPose:
 
         self.display = display
         self.frame = None
+        self.humanbox = []
 
-        # This subscriber is run only once to populate necessary K matrix values.
-        self.info_sub = rospy.Subscriber(cam_info_topic, CameraInfo, self.get_info_callback)
-        self.fx = False
-        self.fy = False
-        self.cx = False
-        self.cy = False
+        # Populate necessary K matrix values for 3D pose computation.
+        cam_info = rospy.wait_for_message(cam_info_topic, CameraInfo)
+        self.fx = cam_info.K[0]
+        self.fy = cam_info.K[4]
+        self.cx = cam_info.K[2]
+        self.cy = cam_info.K[5]
+        #print("fx : ",self.fx)
+        #print("fy : ",self.fy)
+        #print("cx : ",self.cx)
+        #print("cy : ",self.cy)
+        #print("cam_info : ",cam_info)
+        #print("cam_info.k : ",cam_info.K)
+
+        # Function wrappers for OpenPose version discrepancies
+        if OPENPOSE1POINT7_OR_HIGHER:
+            self.emplaceAndPop = lambda datum: self.op_wrapper.emplaceAndPop(op.VectorDatum([datum]))
+            self.detect = lambda kp: kp is not None
+        else:
+            self.emplaceAndPop = lambda datum: self.op_wrapper.emplaceAndPop([datum])
+            self.detect = lambda kp: kp.shape != ()
 
         """ OpenPose skeleton dictionary
         {0, "Nose"}, {13, "LKnee"}
@@ -66,25 +85,43 @@ class rosOpenPose:
         {12, "LHip"}, {25, "Background"}
         """
 
-    def get_info_callback(self, cam_info):
-        self.fx = cam_info.K[0]
-        self.cx = cam_info.K[2]
-        self.fy = cam_info.K[4]
-        self.cy = cam_info.K[5]
-        self.info_sub.unregister()
+    def compute_3D_vectorized(self, kp, depth):
+        # Create views (no copies made, so this remains efficient)
+        U = kp[:, :, 0]
+        V = kp[:, :, 1]
 
-    def convert_to_3d(self, u, v, depth):
-        if self.no_depth: return 0, 0, 0
-        z = depth[int(v), int(u)] / 1000
-        x = (z / self.fx) * (u - self.cx)
-        y = (z / self.fy) * (v - self.cy)
-        return x, y, z
+        # Extract the appropriate depth readings
+        num_persons, body_part_count = U.shape
+        XYZ = np.zeros((num_persons, body_part_count, 3), dtype=np.float32)
+        for i in range(num_persons):
+            for j in range(body_part_count):
+                u, v = int(U[i, j]), int(V[i, j])
+                if v <= depth.shape[0] and u <= depth.shape[1]:
+                    XYZ[i, j, 2] = depth[v, u]
+        XYZ[:, :, 2] /= 1000.  # convert to meters
+
+        # Compute 3D coordinates in vectorized way
+        Z = XYZ[:, :, 2]
+        XYZ[:, :, 0] = (Z / self.fx) * (U - self.cx)
+        XYZ[:, :, 1] = (Z / self.fy) * (V - self.cy)
+        return XYZ
+    
+    def compute_human_size(self, kp):
+        U = kp[:, :, 0]
+        V = kp[:, :, 1]
+        #print(type(U[0])
+        newU = U[0][np.where(U[0]>0)]
+        newV = V[0][np.where(V[0]>0)]
+
+        xmax = int(max(newU)) + 10
+        xmin = int(min(newU)) - 10
+        ymax = int(max(newV)) + 10
+        ymin = int(min(newV)) - 10
+        human_box = [xmax, xmin, ymax, ymin]
+        return human_box
+
 
     def callback(self, ros_image, ros_depth):
-        # Don't process if we have not obtained K matrix yet
-        if not (self.fx and self.cx and self.fy and self.cy):
-            return
-
         # Construct a frame with current time !before! pushing to OpenPose
         fr = Frame()
         fr.header.frame_id = self.frame_id
@@ -101,34 +138,52 @@ class rosOpenPose:
         # Push data to OpenPose and block while waiting for results
         datum = op.Datum()
         datum.cvInputData = image
-        self.op_wrapper.emplaceAndPop([datum])
+        self.emplaceAndPop(datum)
 
         pose_kp = datum.poseKeypoints
         lhand_kp = datum.handKeypoints[0]
         rhand_kp = datum.handKeypoints[1]
+        #print(type(pose_kp))
+        #print(len(pose_kp))
+        #print(pose_kp)
+
+        #self.humanbox = self.compute_human_size(pose_kp))
 
         # Set number of people detected
-        if pose_kp.shape == ():
-            num_persons = 0
-            body_part_count = 0
-        else:
+        if self.detect(pose_kp):
             num_persons = pose_kp.shape[0]
             body_part_count = pose_kp.shape[1]
+        else:
+            num_persons = 0
+            body_part_count = 0
 
         # Check to see if hands were detected
         lhand_detected = False
         rhand_detected = False
         hand_part_count = 0
-        if lhand_kp.shape != ():
+
+        if self.detect(lhand_kp):
             lhand_detected = True
             hand_part_count = lhand_kp.shape[1]
-        if rhand_kp.shape != ():
+
+        if self.detect(rhand_kp):
             rhand_detected = True
             hand_part_count = rhand_kp.shape[1]
 
         # Handle body points
         fr.persons = [Person() for _ in range(num_persons)]
-        try:
+        if num_persons != 0:
+            # Perform vectorized 3D computation for body keypoints
+            b_XYZ = self.compute_3D_vectorized(pose_kp, depth)
+
+            # Perform the vectorized operation for left hand
+            if lhand_detected:
+                lh_XYZ = self.compute_3D_vectorized(lhand_kp, depth)
+
+            # Do same for right hand
+            if rhand_detected:
+                rh_XYZ = self.compute_3D_vectorized(rhand_kp, depth)
+
             for person in range(num_persons):
                 fr.persons[person].bodyParts = [BodyPart() for _ in range(body_part_count)]
                 fr.persons[person].leftHandParts = [BodyPart() for _ in range(hand_part_count)]
@@ -136,14 +191,14 @@ class rosOpenPose:
 
                 detected_hands = []
                 if lhand_detected:
-                    detected_hands.append((lhand_kp, fr.persons[person].leftHandParts))
+                    detected_hands.append((lhand_kp, fr.persons[person].leftHandParts, lh_XYZ))
                 if rhand_detected:
-                    detected_hands.append((rhand_kp, fr.persons[person].rightHandParts))
+                    detected_hands.append((rhand_kp, fr.persons[person].rightHandParts, rh_XYZ))
 
                 # Process the body
                 for bp in range(body_part_count):
                     u, v, s = pose_kp[person, bp]
-                    x, y, z = self.convert_to_3d(u, v, depth)
+                    x, y, z = b_XYZ[person, bp]
                     arr = fr.persons[person].bodyParts[bp]
                     arr.pixel.x = u
                     arr.pixel.y = v
@@ -153,10 +208,10 @@ class rosOpenPose:
                     arr.point.z = z
 
                 # Process left and right hands
-                for hp in range(hand_part_count):
-                    for kp, harr in detected_hands:
+                for kp, harr, h_XYZ in detected_hands:
+                    for hp in range(hand_part_count):
                         u, v, s = kp[person, hp]
-                        x, y, z = self.convert_to_3d(u, v, depth)
+                        x, y, z = h_XYZ[person, hp]
                         arr = harr[hp]
                         arr.pixel.x = u
                         arr.pixel.y = v
@@ -164,13 +219,11 @@ class rosOpenPose:
                         arr.point.x = x
                         arr.point.y = y
                         arr.point.z = z
-
-        except IndexError as e:
-            rospy.logerr("Indexing error occured: {}".format(e))
-            return
-
+        #print("In Class", datum.cvOutputData.copy())
         if self.display: self.frame = datum.cvOutputData.copy()
+        if self.display: self.humanbox = self.compute_human_size(pose_kp)
         self.pub.publish(fr)
+        # perfect
 
 
 def main():
@@ -211,11 +264,15 @@ def main():
 
         # Start ros wrapper
         rop = rosOpenPose(frame_id, no_depth, pub_topic, color_topic, depth_topic, cam_info_topic, op_wrapper, display)
-
+        #print("Out Class", rop.frame)
         if display:
             while not rospy.is_shutdown():
                 if rop.frame is not None:
-                    cv2.imshow("Ros OpenPose", rop.frame)
+                    #print("Out Class", rop.humanbox)
+                    if rop.frame != [] :
+                        imageC = cv2.rectangle(rop.frame,(rop.humanbox[1],rop.humanbox[3]),(rop.humanbox[0],rop.humanbox[2]),(0,0,255),1)
+                    #imageC = cv2.rectangle(rop.frame,(0,0),(100,100),(0,0,255),1)
+                    cv2.imshow("Ros OpenPose Python", imageC)
                     cv2.waitKey(1)
         else:
             rospy.spin()

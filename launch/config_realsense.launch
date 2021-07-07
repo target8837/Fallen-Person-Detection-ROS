@@ -16,7 +16,7 @@ Date: 2019/10/08
   <arg name="cam_info_topic" default="/camera/color/camera_info" />
 
   <!-- frame id for point cloud and 3D skeleton data -->
-  <arg name="frame_id" default="camera_color_optical_frame" />
+  <arg name="frame_id" default="map" />
 
   <!-- realsense camera provide depth information.
   hence unset the flag. -->

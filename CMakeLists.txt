@@ -15,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+find_package(Threads REQUIRED)
+
 ## Make sure 'FindGFlags.cmake' and 'FindGlog.cmake' are visible to cmake
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
 

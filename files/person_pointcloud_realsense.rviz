@@ -30,6 +30,14 @@ Visualization Manager:
   Displays:
     - Class: rviz/MarkerArray
       Enabled: true
+      Marker Topic: /fire
+      Name: fire topic
+      Namespaces:
+        visualization: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
       Marker Topic: /visualization
       Name: Human Skeleton
       Namespaces:

@@ -24,14 +24,17 @@
 #define OPENPOSE1POINT7POINT1_OR_HIGHER OpenPose_VERSION_MAJOR >= 1 && OpenPose_VERSION_MINOR >= 7 && OpenPose_VERSION_PATCH >=1
 
 // define sleep for input and output worker in milliseconds
+// 입력 및 출력 작업자의 절전 모드 정의 (밀리초)
 const int SLEEP_MS = 10;
 
 // define a few datatype
+// 몇가지 데이터 유형을 정의
 typedef std::shared_ptr<op::Datum> sPtrDatum;
 typedef std::shared_ptr<std::vector<sPtrDatum>> sPtrVecSPtrDatum;
 
 // the input worker. the job of this worker is to provide color imagees to
 // openpose wrapper
+// 이 Worker의 job은 오픈포즈 wrapper를 열기 위해 컬러 이미지를 제공하는 것이다.
 class WUserInput : public op::WorkerProducer<sPtrVecSPtrDatum>
 {
 public:
@@ -54,6 +57,7 @@ public:
         ROS_WARN_THROTTLE(10, "Waiting for color image frame...");
         std::this_thread::sleep_for(std::chrono::milliseconds{SLEEP_MS});
         return nullptr;
+        // 들어오는 이미지 프레임이 없다면 해당 문구 출력
       }
       else
       {

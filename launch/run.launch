@@ -32,10 +32,10 @@ Date: 2019/11/23
    to do so, please change the value, as shown in the example below.
   -->
   <?ignore
-    <arg name="openpose_args" value="--hand --disable_multi_thread --model_folder /home/ravi/openpose/models/" />
+    <arg name="openpose_args" value="--hand --disable_multi_thread --model_folder /home/kwan/openpose/models/" />
   ?>
   <!-- full path to the model dir of openpose -->
-  <arg name="openpose_args" value="--model_folder /home/ravi/openpose/models/" />
+  <arg name="openpose_args" value="--model_folder /home/kwan/openpose/models/" />
 
   <!-- rostopic to publish the 3D skeleton data -->
   <arg name="pub_topic" default="/frame" />
@@ -52,6 +52,8 @@ Date: 2019/11/23
   <!-- flag to enable printing ros message to terminal -->
   <arg name="print" default="true" />
 
+  <!-- Map server -->
+  <node pkg="map_server" name="map_server" type="map_server" args="/home/kwan/map.yaml"/>
   <include file="$(find ros_openpose)/launch/config_$(arg camera).launch" >
     <arg name="rviz" value="$(arg rviz)" />
     <arg name="print" value="$(arg print)" />
