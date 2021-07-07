@@ -4,6 +4,7 @@ The project was based on open-source 3D Pose Estimation (https://github.com/ravi
 Determine the fall based on the location of the human joint.
 
 ## Citation
+```tex
 @misc{ros_openpose,
     author = {Joshi, Ravi P. and Broek, Marike K. and Tan, Xiang Zhi and Choi, Andrew and Luo, Rui},
     title = {{ROS OpenPose}},
@@ -12,3 +13,4 @@ Determine the fall based on the location of the human joint.
     journal = {GitHub Repository},
     howpublished = {\url{https://github.com/ravijo/ros_openpose}}
 }
+```
