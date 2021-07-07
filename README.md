@@ -3,6 +3,9 @@ The project was based on open-source 3D Pose Estimation (https://github.com/ravi
 
 Determine the fall based on the location of the human joint.
 
+![image](./img/stand.png)
+![image](./img/fall.png)
+
 ## Citation
 ```tex
 @misc{ros_openpose,
