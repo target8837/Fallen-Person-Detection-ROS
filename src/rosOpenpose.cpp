@@ -18,6 +18,9 @@
 // ros_openpose headers
 #include <ros_openpose/Frame.h>
 #include <ros_openpose/cameraReader.hpp>
+#include "std_msgs/MultiArrayLayout.h"
+#include "std_msgs/MultiArrayDimension.h"
+#include <std_msgs/Int32MultiArray.h>
 
 // define a macro for compatibility with older versions
 #define OPENPOSE1POINT6_OR_HIGHER OpenPose_VERSION_MAJOR >= 1 && OpenPose_VERSION_MINOR >= 6
@@ -26,6 +29,9 @@
 // define sleep for input and output worker in milliseconds
 // 입력 및 출력 작업자의 절전 모드 정의 (밀리초)
 const int SLEEP_MS = 10;
+
+int Arr[2];
+void arrayCallback(const std_msgs::Int32MultiArray::ConstPtr& array);
 
 // define a few datatype
 // 몇가지 데이터 유형을 정의
@@ -501,6 +507,19 @@ void configureOpenPose(op::Wrapper& opWrapper,
   }
 }
 
+void arrayCallback(const std_msgs::Int32MultiArray::ConstPtr& array)
+{
+
+	int i = 0;
+	// print all the remaining numbers
+	for(std::vector<int>::const_iterator it = array->data.begin(); it != array->data.end(); ++it)
+	{
+		Arr[i] = *it;
+		i++;
+	}
+
+	return;
+}
 int main(int argc, char* argv[])
 {
   ros::init(argc, argv, "ros_openpose_node");
@@ -518,6 +537,9 @@ int main(int argc, char* argv[])
   nh.getParam("depth_topic", depthTopic);
   nh.getParam("cam_info_topic", camInfoTopic);
 
+  ros::Subscriber sub3 = nh.subscribe("/firelocation", 100, arrayCallback);
+
+  
   if (pubTopic.empty())
   {
     ROS_FATAL("Missing 'pub_topic' info in launch file. Please make sure that you have executed 'run.launch' file.");

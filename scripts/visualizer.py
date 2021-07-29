@@ -13,6 +13,9 @@ from std_msgs.msg import ColorRGBA
 from geometry_msgs.msg import Vector3, Point
 from visualization_msgs.msg import Marker, MarkerArray
 from people_msgs.msg import PositionMeasurement, PositionMeasurementArray
+from geometry_msgs.msg import PoseStamped
+
+
 from copy import deepcopy
 import random
 #import cv_bridge
@@ -53,6 +56,15 @@ spawn_cnt = 0
 fire_cnt = 0
 fire_sw = 0
 fire_scale = 10
+global_x = 0
+global_y = 0
+global_z = 0
+
+def pos_callback(msg):
+    global global_x, global_y, global_z
+    global_x = msg.pose.position.x
+    global_y = msg.pose.position.y
+    global_z = msg.pose.position.z
 
 class RealtimeVisualization():
     def __init__(self, ns, frame_topic, skeleton_frame, id_text_size, id_text_offset, skeleton_hands, skeleton_line_width):
@@ -130,11 +142,12 @@ class RealtimeVisualization():
         #self.circle_pub = rospy.Publisher("/circle",PositionMeasurementArray, queue_size=10)
         self.human_pub = rospy.Publisher("/human_localization", Marker, queue_size=10)
         self.group_pub = rospy.Publisher("/group_localization", MarkerArray, queue_size=10)
-        self.fire_pub = rospy.Publisher("/fire", MarkerArray, queue_size=10)
+        #self.fire_pub = rospy.Publisher("/fire", MarkerArray, queue_size=10)
         self.path_pub = rospy.Publisher("/path", MarkerArray, queue_size=10)
         self.all_pub = rospy.Publisher("/all", MarkerArray, queue_size=100)
         # define a subscriber to retrive tracked bodies
         rospy.Subscriber(frame_topic, Frame, self.frame_callback)
+        rospy.Subscriber('mavros/local_position/pose', PoseStamped, pos_callback)
 
     def spin(self):
         '''
@@ -190,8 +203,8 @@ class RealtimeVisualization():
         marker.type = marker.SPHERE
         marker.id = counter
         marker.action = marker.ADD
-        marker.pose.position.x = x + 2
-        marker.pose.position.y = y + 3
+        marker.pose.position.x = x + global_x
+        marker.pose.position.y = y + global_y
         marker.pose.position.z = 1
         marker.pose.orientation.x = 1.0
         marker.pose.orientation.y = 0.0
@@ -209,15 +222,17 @@ class RealtimeVisualization():
             mark.color.r = 1.0
             mark.color.g = 1.0
             mark.color.b = 0.0
+            #mark.text = "FALL"
         else :
             mark.color.r = 0.0
             mark.color.g = 1.0
             mark.color.b = 0.0
+            #mark.text = "STAND"
         #mark.color.b = random.random()
         return mark
     
 
-    def create_fire(self, y, time):
+    def create_fire(self, x, y, z, time):
         marker = Marker()
         marker.header.frame_id = self.skeleton_frame
         marker.header.stamp = time
@@ -226,9 +241,9 @@ class RealtimeVisualization():
         marker.type = marker.SPHERE
         marker.id = y
         marker.action = marker.ADD
-        marker.pose.position.x = -2
+        marker.pose.position.x = x
         marker.pose.position.y = y
-        marker.pose.position.z = 1
+        marker.pose.position.z = z
         marker.pose.orientation.x = 1.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
@@ -238,8 +253,6 @@ class RealtimeVisualization():
         marker.scale.z = 1.0
         marker.mesh_use_embedded_materials = True
         marker.text = "fire"
-        #marker.mesh_resource = "file:///home/kwan/catkin_ws/src/visualization_tutorials/rviz_plugin_tutorials/media/stand.dae"
-        #marker.mesh_resource = "file:///home/kwan/catkin_ws/src/visualization_tutorials/rviz_plugin_tutorials/media/fired.dae"
         mark = deepcopy(marker)
         mark.color.a = 0.9
         mark.color.r = random.uniform(0.8,1)
@@ -303,6 +316,10 @@ class RealtimeVisualization():
     def isValid(self, bodyPart):
         return bodyPart.score > 0 and not math.isnan(bodyPart.point.x) and not math.isnan(bodyPart.point.y) and not math.isnan(bodyPart.point.z) and bodyPart.point.z > 0
 
+    def fire_callback(self, data):
+        FF = self.create_fire(data.px, data.py, data.pz,rospy.Time.now())
+        self.fire_array.markers.append(FF)
+        self.all_array.markers.append(FF)
 
     def frame_callback(self, data):
         '''
@@ -405,10 +422,7 @@ class RealtimeVisualization():
 
             
             numpy_points = numpy.asarray(pixellist)
-            #print(numpy_points)
-            #print(1)
             loaded_model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
-            #print(2)
             test_X = numpy_points[0:50]
             if (test_X.ndim == 1):
                 test_X = numpy.array([test_X])
@@ -422,18 +436,19 @@ class RealtimeVisualization():
                 #predict = "STAND  " + str(100-int(pred*100)) + "%"
                 predict = "STAND"
                 danger = 0
-            
-            #predict = "*"
-            #print(predict)
             person_id.text = str(predict)
 
             if self.isValid(neck):
                 #person_id.pose.position = Point(nose.point.x, nose.point.y + self.id_text_offset, nose.point.z)
-                person_id.pose.position = Point(neck.point.x+2, neck.point.y+3, 2)
+                person_id.pose.position = Point(neck.point.x+global_x, neck.point.y+global_y, 2)
+                PP = self.create_position(neck.point.x, neck.point.y, neck.point.z, now)
+                HH = self.create_human(danger, neck.point.x, neck.point.y, neck.point.z, now, person_counter)
                 Group_Array.markers.append(person_id)
                 all_array.markers.append(person_id)
-            PP = self.create_position(neck.point.x, neck.point.y, neck.point.z, now)
-            HH = self.create_human(danger, neck.point.x, neck.point.y, neck.point.z, now, person_counter)
+                pos_array.people.append(PP)
+                Group_Array.markers.append(HH)
+                all_array.markers.append(HH)
+            '''
             path_array.markers.append(self.create_point(neck.point.x+2, neck.point.y+3, now))
             path_array.markers.append(self.create_path(neck.point.x+2, neck.point.y+3, 1, 0, now))
             path_array.markers.append(self.create_point(1, 0, now))
@@ -445,10 +460,12 @@ class RealtimeVisualization():
             all_array.markers.append(self.create_point(1, 0, now))
             all_array.markers.append(self.create_path(1, 0, -3, -4, now))
             all_array.markers.append(self.create_point(-3, -4, now))
-
-            pos_array.people.append(PP)
-            Group_Array.markers.append(HH)
-            all_array.markers.append(HH)
+            '''
+            #Group_Array.markers.append(person_id)
+            #all_array.markers.append(person_id)
+            #pos_array.people.append(PP)
+            #Group_Array.markers.append(HH)
+            #all_array.markers.append(HH)
             new_line = str("'"+'pose: {position: {x:'+ str(neck.point.x) + ' y:'+ str(neck.point.y) +' z: '+ str(0.9) + '}} ''name: "new_name" ''allow_renaming: true'+"'")
             global pastx
             global pasty
@@ -458,7 +475,7 @@ class RealtimeVisualization():
             global fire_sw
             global fire_scale
             #if abs(pastx-nose.point.x) > 0.1 or abs(pasty-nose.point.y) > 0.1 or abs(pastz-nose.point.z) > 0.1 :
-            
+            '''
             if spawn_cnt < 1 :    
                 EXPORT203 = """ign service -s /world/dorm/remove --reqtype ignition.msgs.Entity --reptype ignition.msgs.Boolean --timeout 300 --req 'name: "new_name" type: MODEL'"""
                 os.system(EXPORT203)
@@ -514,7 +531,7 @@ class RealtimeVisualization():
                         fire_scale += 10
 
                 fire_cnt += 1
-                
+            '''
             
 
                 
@@ -523,9 +540,9 @@ class RealtimeVisualization():
             pastz = neck.point.z
             #print(new_line)
             person_counter += 1
-        
+        '''
         for i in range(1,4) : 
-            FF = self.create_fire(i,rospy.Time.now())
+            FF = self.create_fire(1,2,i,rospy.Time.now())
             fire_id = self.create_marker(i, ColorRGBA(0, 0, 0, 1.00), Marker.TEXT_VIEW_FACING, 0.8, now)
             fire_id.pose.position = Point(-2, i, 3)
             fire_id.text = str("fire")
@@ -534,11 +551,13 @@ class RealtimeVisualization():
             all_array.markers.append(fire_id)
             all_array.markers.append(FF)
         # publish the markers
+        '''
+        
 
         self.skeleton_pub.publish(marker_array)
         self.position_pub.publish(pos_array)
         self.group_pub.publish(Group_Array)
-        self.fire_pub.publish(fire_array)
+        #self.fire_pub.publish(fire_array)
         self.path_pub.publish(path_array)
         self.all_pub.publish(all_array)
 

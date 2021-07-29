@@ -46,6 +46,7 @@ add_message_files(
   BodyPart.msg
   Person.msg
   Frame.msg
+  yoloObject.msg
 )
 
 generate_messages(
