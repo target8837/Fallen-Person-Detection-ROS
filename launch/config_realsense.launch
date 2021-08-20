@@ -7,13 +7,12 @@ Date: 2019/10/08
 -->
 <launch>
   <!-- rostopic to subscribe for color images -->
-  <arg name="color_topic" default="/camera/color/image_raw" />
-
+  <!--<arg name="color_topic" default="/camera/color/image_raw" /> -->
+  <arg name="color_topic" default="/d435/color/image_raw" />
   <!-- rostopic to subscribe for depth images -->
-  <arg name="depth_topic" default="/camera/aligned_depth_to_color/image_raw" />
-
+  <arg name="depth_topic" default="/d435/aligned_depth_to_color/image_raw" /> 
   <!-- rostopic to subscribe for camera calibration parameters -->
-  <arg name="cam_info_topic" default="/camera/color/camera_info" />
+  <arg name="cam_info_topic" default="/d435/color/camera_info" />
 
   <!-- frame id for point cloud and 3D skeleton data -->
   <arg name="frame_id" default="map" />
@@ -53,27 +52,5 @@ Date: 2019/10/08
     <arg name="synchronous" value="$(arg synchronous)" />
     <arg name="py_openpose_path" value="$(arg py_openpose_path)" />
   </include>
-
-  <!-- invoke realsense camera ros package -->
-  <group if="$(arg pointcloud)" >
-    <include file="$(find realsense2_camera)/launch/rs_camera.launch" >
-      <arg name="align_depth" value="true" />
-      <arg name="filters" value="pointcloud" />
-    </include>
-    <!-- invoke rviz -->
-    <group if="$(arg rviz)" >
-      <node pkg="rviz" type="rviz" respawn="false" required="true" name="rviz" args="-d $(find ros_openpose)/files/person_pointcloud_realsense.rviz" />
-    </group>
-  </group>
-
-  <!-- invoke realsense camera ros package -->
-  <group unless="$(arg pointcloud)" >
-    <include file="$(find realsense2_camera)/launch/rs_camera.launch" >
-      <arg name="align_depth" value="true" />
-    </include>
-    <!-- invoke rviz -->
-    <group if="$(arg rviz)" >
-      <node pkg="rviz" type="rviz" respawn="false" required="true" name="rviz" args="-d $(find ros_openpose)/files/only_person_realsense.rviz" />
-    </group>
-  </group>
+    <!-- invoke realsense camera ros package -->
 </launch>

@@ -12,7 +12,7 @@
 // todo: merge the 'for' loop for body and hand keypoints into one
 
 // OpenPose headers
-#include <openpose/flags.hpp>
+#include "/home/kwan/openpose/include/openpose/flags.hpp"
 #include <openpose/headers.hpp>
 
 // ros_openpose headers
